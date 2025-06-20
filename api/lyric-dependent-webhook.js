@@ -1,16 +1,16 @@
 import { Client } from "@hubspot/api-client";
 
 export default async function handler(req, res) {
+  console.log("🚀 Webhook function reached!");
+
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
   const AUTH_HEADER = req.headers.authorization || "";
-  const TOKEN = process.env.REMOTE_MD_CALLBACK_SECRET;
+  const TOKEN = "REMOTE_MD_CALLBACK_SECRET"; // hardcoded as agreed with Lyric
 
-  // 🧪 Logs de debug para verificar el problema del 401
   console.log("🔐 HEADER recibido:", AUTH_HEADER);
-  console.log("🔐 TOKEN cargado desde ENV:", TOKEN);
   console.log("🔐 TOKEN esperado:", `Bearer ${TOKEN}`);
 
   if (AUTH_HEADER !== `Bearer ${TOKEN}`) {
@@ -21,21 +21,20 @@ export default async function handler(req, res) {
     const event = req.body;
     console.log("📥 Incoming Lyric Webhook Event:", JSON.stringify(event, null, 2));
 
-    const eventType = event.event_type || "";
-    const dependent = event.Dependents?.[0];
+    const eventType = event.event_type || event.event || "";
+    const dependent = event.Dependents?.[0] || event;
 
     if (!dependent) throw new Error("❌ No dependent info in payload");
 
-    const dependentUserId = dependent.dependent_user_id;
-    const statusId = dependent.status_id;
-    const firstName = dependent.first_name;
-    const lastName = dependent.last_name;
+    const dependentUserId = dependent.dependent_user_id || dependent.userId;
+    const statusId = dependent.status_id || dependent.status;
+    const firstName = dependent.first_name || dependent.firstName;
+    const lastName = dependent.last_name || dependent.lastName;
 
     if (!dependentUserId) throw new Error("❌ Missing dependent_user_id");
 
     const hs = new Client({ accessToken: process.env.HUBSPOT_API_KEY });
 
-    // Buscar contacto en HubSpot
     const searchResp = await hs.crm.contacts.searchApi.doSearch({
       filterGroups: [
         {
@@ -57,17 +56,16 @@ export default async function handler(req, res) {
 
     const contactId = match.id;
     const existing = match.properties;
-
     let updatePayload = {};
 
     switch (eventType) {
       case "census.dependent.status.update":
-        if (!statusId) throw new Error("❌ Missing status_id for status update");
-        if (existing.dependent_status_id === `${statusId}`) {
-          console.log(`⏭ No update needed. Status already ${statusId}`);
+        const statusValue = statusId === "active" ? "2" : statusId === "inactive" ? "3" : statusId;
+        if (existing.dependent_status_id === `${statusValue}`) {
+          console.log(`⏭ No update needed. Status already ${statusValue}`);
         } else {
-          updatePayload.dependent_status_id = `${statusId}`;
-          console.log(`✅ Will update status to ${statusId}`);
+          updatePayload.dependent_status_id = `${statusValue}`;
+          console.log(`✅ Will update status to ${statusValue}`);
         }
         break;
 
