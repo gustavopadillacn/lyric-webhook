@@ -8,6 +8,11 @@ export default async function handler(req, res) {
   const AUTH_HEADER = req.headers.authorization || "";
   const TOKEN = process.env.REMOTE_MD_CALLBACK_SECRET;
 
+  // 🧪 Logs de debug para verificar el problema del 401
+  console.log("🔐 HEADER recibido:", AUTH_HEADER);
+  console.log("🔐 TOKEN cargado desde ENV:", TOKEN);
+  console.log("🔐 TOKEN esperado:", `Bearer ${TOKEN}`);
+
   if (AUTH_HEADER !== `Bearer ${TOKEN}`) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -30,7 +35,7 @@ export default async function handler(req, res) {
 
     const hs = new Client({ accessToken: process.env.HUBSPOT_API_KEY });
 
-    // 🔍 Buscar contacto por dependent_user_id
+    // Buscar contacto en HubSpot
     const searchResp = await hs.crm.contacts.searchApi.doSearch({
       filterGroups: [
         {
@@ -82,7 +87,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ message: "Unhandled event" });
     }
 
-    // 🔃 Hacer update si hay cambios
     if (Object.keys(updatePayload).length > 0) {
       await hs.crm.contacts.basicApi.update(contactId, { properties: updatePayload });
       console.log(`🎯 Updated contact ${contactId}:`, updatePayload);
