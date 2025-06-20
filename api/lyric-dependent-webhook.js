@@ -1,22 +1,25 @@
+// /api/lyric-dependent-webhook.js
 export default async function handler(req, res) {
-  const AUTH_TOKEN = 'REMOTE_MD_CALLBACK_SECRET'; // Puedes cambiarlo si querés
+  const secret = req.headers.authorization;
+
+  if (secret !== 'Bearer REMOTE_MD_CALLBACK_SECRET') {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   }
 
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace('Bearer ', '');
+  const event = req.body?.event_type;
+  const dependentId = req.body?.dependent_user_id;
 
-  if (token !== AUTH_TOKEN) {
-    console.log('❌ Unauthorized webhook attempt');
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!event || !dependentId) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-  const payload = req.body;
+  console.log(`📩 Webhook received: ${event}, Dependent ID: ${dependentId}`);
 
-  console.log('✅ Webhook received from Lyric:');
-  console.log(JSON.stringify(payload, null, 2));
-
+  // Aquí va la lógica para enviar a HubSpot
+  // Por ahora solo confirmamos recepción
   return res.status(200).json({ success: true });
 }
