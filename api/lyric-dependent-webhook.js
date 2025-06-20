@@ -1,22 +1,69 @@
+import { Client } from "@hubspot/api-client";
+
 export default async function handler(req, res) {
-  const AUTH_TOKEN = 'REMOTE_MD_CALLBACK_SECRET'; // Puedes cambiarlo si querés
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, message: 'Method Not Allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace('Bearer ', '');
+  const AUTH_HEADER = req.headers.authorization || "";
+  const TOKEN = "REMOTE_MD_CALLBACK_SECRET"; // Reemplaza esto si lo necesitás
 
-  if (token !== AUTH_TOKEN) {
-    console.log('❌ Unauthorized webhook attempt');
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (AUTH_HEADER !== `Bearer ${TOKEN}`) {
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const payload = req.body;
+  try {
+    const event = req.body;
+    console.log("📥 Lyric Webhook Event:", JSON.stringify(event, null, 2));
 
-  console.log('✅ Webhook received from Lyric:');
-  console.log(JSON.stringify(payload, null, 2));
+    const eventType = event.event_type || "";
+    const dependent = event.Dependents?.[0];
+    if (!dependent) throw new Error("❌ No dependent info in payload");
 
-  return res.status(200).json({ success: true });
+    const dependentUserId = dependent.dependent_user_id;
+    const statusId = dependent.status_id;
+    if (!dependentUserId) throw new Error("❌ Missing dependent_user_id");
+    if (!statusId) throw new Error("❌ Missing status_id");
+
+    const hs = new Client({ accessToken: process.env.HUBSPOT_API_KEY });
+
+    const searchResp = await hs.crm.contacts.searchApi.doSearch({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "dependent_user_id",
+              operator: "EQ",
+              value: `${dependentUserId}`,
+            },
+          ],
+        },
+      ],
+      properties: ["dependent_status_id"],
+      limit: 1,
+    });
+
+    const match = searchResp?.results?.[0];
+    if (!match) throw new Error(`❌ No contact found with dependent_user_id ${dependentUserId}`);
+
+    if (eventType === "census.dependent.status.update") {
+      await hs.crm.contacts.basicApi.update(match.id, {
+        properties: {
+          dependent_status_id: `${statusId}`,
+        },
+      });
+
+      console.log(`✅ Updated contact ${match.id} with status_id ${statusId}`);
+    } else {
+      console.log("ℹ️ Event received but not handled:", eventType);
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("❌ Error handling Lyric webhook:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 }
